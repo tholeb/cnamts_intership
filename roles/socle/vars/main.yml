@@ -1,0 +1,9 @@
+---
+iDRAC_username: "root"
+iDRAC_uid: 2
+
+models:
+  - T130
+  - T140
+  - T150
+  - R140

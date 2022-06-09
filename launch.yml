@@ -1,0 +1,12 @@
+---
+- name: Configuration hardware via le standard RedFish
+  hosts: all
+  remote_user: root
+  gather_facts: yes
+
+  vars_files:
+    - defaults/vault.yml
+
+  roles:
+    - socle
+    - cockpit

@@ -1,0 +1,45 @@
+{
+    // See https://go.microsoft.com/fwlink/?LinkId=733558
+    // for the documentation about the tasks.json format
+    "version": "2.0.0",
+    "presentation": {
+        "reveal": "always",
+        "focus": false,
+        "panel": "shared",
+        "showReuseMessage": false,
+    },
+    "tasks": [
+        {
+            "label": "cURL",
+            "type": "shell",
+            "problemMatcher": [],
+            "command": ".vscode/curl.sh",
+            "args": [
+                "${input:server}"
+            ],
+            "detail": "cURL via un script sh"
+        },
+        {
+            "label": "Run playbook",
+            "type": "shell",
+            "problemMatcher": [],
+            "command": "ansible-playbook -i inv/inventory.ini launch.yml -vv;",
+            "detail": "Lance le playbook Ansible sur les machines du Labo (inventaire)",
+            "dependsOn": "Upload playbook",
+            "presentation": {
+                "focus": true
+            }
+        },
+    ],
+    "inputs": [
+        {
+            "id": "server",
+            "description": "Le nom de la machine",
+            "default": "localhost",
+            "type":"pickString",
+            "options": [
+                "localhost",
+            ]
+        }
+    ]
+}

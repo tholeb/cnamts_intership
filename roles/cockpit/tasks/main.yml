@@ -1,0 +1,67 @@
+---
+- name: "Enregistre le FQDN de l'AMBox"
+  shell: "hostname --fqdn"
+  register: fqdn
+  failed_when: '"@" in fqdn'
+  no_log: true
+
+- name: "Défini le nom du groupe administrateur local de l'AMBox"
+  set_fact:
+    ambx_group: "ambx-localadmin-{{ ansible_facts.hostname[:6] }}@{{ fqdn.stdout[15:] }}"
+  no_log: true
+
+- name: Cockpit - Installe cockpit avec yum
+  yum:
+    update_cache: yes
+    state: latest
+    pkg: 
+      - cockpit
+  when:
+    - ansible_distribution == 'CentOS'
+  no_log: True
+
+- name: Cockpit - Démarre et rend persistant cockpit
+  service: 
+    name: cockpit
+    state: started
+    enabled: yes
+  no_log: true
+
+- name: Cockpit - Cache des pages de la sidebar
+  copy: 
+    src: "{{ item.file }}"
+    dest: "/usr/share/cockpit/{{ item.name }}/override.json"
+  loop:
+    - name: kdump
+      file: tools.json
+    - name: selinux
+      file: tools.json
+    - name: sosreport
+      file: tools.json
+    - name: systemd
+      file: tools.json
+    - name: users
+      file: menu.json
+  no_log: true
+
+- name: "Cockpit - Créé le fichier de configuration"
+  copy: 
+    src: cockpit.conf
+    dest: /etc/cockpit/
+
+- name: "Cockpit - Créé le fichier sudoers pour '{{ ambx_group }}'"
+  template:
+    src: cockpit.sudo.j2
+    dest: "/etc/sudoers.d/ad_{{ ambx_group | regex_replace('([@.])', '_') }}" # le nom du fichier sudoers ne peut pas contenir certains caractères
+    validate: /usr/sbin/visudo -csf %s
+    mode: '0440'
+
+- name: "Cockpit - ACL r-x de journalctl pour '{{ ambx_group }}'"
+  acl:
+    path: /run/log/journal/
+    entity: "{{ ambx_group }}"
+    etype: group
+    permissions: rx
+    state: present
+    recursive: yes
+  no_log: true

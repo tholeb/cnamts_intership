@@ -1,0 +1,13 @@
+# sudo for "%{{ ambx_group }}" : added by Ansible
+Defaults:%{{ ambx_group }} !requiretty
+
+{# # Permet d'élever ses privilèges sur cockpit
+# /!\ Donne accès à **TOUT** /!\
+# # %{{ ambx_group }} ALL=(ALL) NOPASSWD: /usr/bin/cockpit-bridge #}
+
+# Logs
+%{{ ambx_group }} ALL=(ALL) NOPASSWD: /bin/journalctl *
+%{{ ambx_group }} ALL=(ALL) NOPASSWD: /bin/cat /var/log/*,/bin/view /var/log/*,/bin/less /var/log/*
+%{{ ambx_group }} ALL=(ALL) NOPASSWD: /bin/cat /run/log/journal/*,/bin/view /run/log/journal/*,/bin/less /run/log/journal/*
+
+%{{ ambx_group }} ALL=(ALL) NOPASSWD: /sbin/reboot

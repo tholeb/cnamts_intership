@@ -1,0 +1,23 @@
+---
+- name: Vérifie que le dossier "top" existe 
+  stat:
+    path: /usr/share/cockpit/top/
+  register: p
+  no_log: True
+
+- name: Créé le dossier si il n'existe pas
+  file:
+    path: /usr/share/cockpit/top/
+    state: directory
+    mode: 0755
+    group: root
+    owner: root
+  when: not p.stat.exists
+  no_log: true
+
+- name: Ajoute les fichiers du module "top" à cockpit
+  copy:
+    src: top/
+    dest: /usr/share/cockpit/top/
+  when: p.stat.isdir is defined and p.stat.isdir # Path exists and is a directory
+  no_log: true

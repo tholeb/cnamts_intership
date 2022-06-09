@@ -1,0 +1,152 @@
+---
+- name: Dell - récupération de l'IP
+  # Récupère l'interface, puis l'IP, formatte l'IP, remplace le dernier char par 1 (la carte réseau normale)
+  shell: ip -f inet addr show idrac | grep "inet .*/" | awk '{print substr($2, 1, length($2)-3)}' | sed 's/.$/1/'
+  register: idrac_inet
+  failed_when: "idrac_inet.stdout == ''"
+  no_log: true
+
+- name: Dell - Récupération numéro de série Ambox
+  command: /usr/sbin/dmidecode -s system-serial-number
+  register: ambx_sn
+  no_log: true
+  
+- name: Dell - Initialisation variables "iDRAC_ip", "redfish_uri" et "dell_service_tag"
+  set_fact:
+    iDRAC_ip: "{{ idrac_inet.stdout }}"
+    redfish_uri: "https://{{ idrac_inet.stdout }}/redfish/v1"
+    dell_service_tag: "{{ ambx_sn.stdout }}"
+  no_log: true
+
+- name : DELL - Charge la configuration
+  include_vars: 
+    file: "dell/{{ ambx_model }}.yml"
+  no_log: true
+
+- name: Dell - Désinstallation OMSA 9.1
+  yum:
+    name: "{{ item }}"
+    state: absent
+  with_items: "{{ omsa_rpm_list }}"
+  no_log: true
+
+- name: Dell - Change le default password de l'utilisateur {{ iDRAC_uid }} ({{ iDRAC_username }}) et assigne son rôle (Administrator) - échoue si le mot de passe par défaut a été changé
+  redfish_command:
+    category: Accounts
+    command: ["UpdateUserPassword", "UpdateUserRole"]
+    baseuri: "{{ iDRAC_ip }}"
+    username: "{{ iDRAC_username }}"
+    password: "calvin"
+    id: "{{ iDRAC_uid }}"
+    new_password: "{{ vlt_dell_setup_passwd }}"
+    roleid: "Administrator" #1
+  register: idrac_password
+  ignore_errors: yes
+  no_log: true
+
+- name: Dell - Défini le mode de boot sur UEFI
+  redfish_config:
+    category: Systems
+    command: SetBiosAttributes
+    bios_attribute_name: BootMode
+    bios_attribute_value: Uefi
+    baseuri: "{{ iDRAC_ip }}"
+    username: "{{ iDRAC_username }}"
+    password: "{{ vlt_dell_setup_passwd }}"
+  no_log: true
+
+- name: Dell - Upload la configuration XML de l'AMBox
+  template: 
+    src: "dell_{{ambx_model}}.xml.j2"
+    dest: "/tmp/dell_{{ambx_model}}.xml"
+    owner: root
+    group: root
+    mode: "644"
+  no_log: true
+
+- name: Upload le script python pour voir les dépendances
+  copy: 
+    src: pkgs_checker.py
+    dest: "~"
+  no_log: true
+
+- name: Vérifie si OMSDK est installé dans les librairies Python2
+  command: "python2 ~/pkgs_checker.py omsdk" 
+  register: omsdkInstalled
+  no_log: true
+
+# OMSDK est necessaire si on veut importer/exporter directement la config XML
+- name: Dell - Installe OMSDK
+  include_tasks : "dell/OMSDK.yml"
+  when: '"is not installed" in omsdkInstalled.stdout'
+
+- name: Dell - Configure l'iDRAC du T130
+  include_tasks : "dell/{{ ambx_model }}.yml"
+  when: "'T130' in ambx_model"
+
+- name: Dell - Configure l'iDRAC
+  block:
+    - name: Dell - Désinstallation RACADM 9.3
+      yum:
+        name: "{{ item }}"
+        state: absent
+      with_items: "{{ racadm_rpm_list }}"
+      no_log: true
+
+    # Il existe le même module pour hp ilo, lenovo enos, ...
+    - name: DELL - Applique la config de l'AMBox via les managers
+      idrac_redfish_config:
+        category: Manager
+        command: SetManagerAttributes
+        manager_attribute_name: "{{ item.name }}"
+        manager_attribute_value: "{{ item.value }}"
+        baseuri: "{{ iDRAC_ip }}"
+        username: "{{ iDRAC_username }}"
+        password: "{{ vlt_dell_setup_passwd }}"
+      with_items:
+        - "{{ config }}" # dans vars/dell/<model ambox>.yml
+      no_log: true
+
+    # Necessite la lib python OMSDK
+    - name: Dell - Importe la configuration XML
+      idrac_server_config_profile:
+        idrac_ip: "{{ iDRAC_ip }}"
+        idrac_user: "{{ iDRAC_username }}"
+        idrac_password: "{{ vlt_dell_setup_passwd }}"
+        command: import
+        share_name: /tmp
+        scp_file: dell_{{ambx_model}}.xml
+        scp_components: ALL
+        job_wait: false
+      no_log: false
+      ignore_errors: yes
+  when: "ambx_model in models and 'T130' not in ambx_model" # Le T130 est trop vieux, et n'est donc pas compatible avec les modules utilisés ci-dessus
+
+- name: Dell - Exporte la configuration BIOS
+  idrac_server_config_profile:
+    idrac_ip: "{{ iDRAC_ip }}"
+    idrac_user: "{{ iDRAC_username }}"
+    idrac_password: "{{ vlt_dell_setup_passwd }}"
+    share_name: "/root"
+    scp_file: "dell_{{ ambx_model }}.xml"
+    export_format: XML
+    scp_components: "IDRAC"
+    job_wait: false
+  register: exportedConfig
+  ignore_errors: yes
+  no_log: false
+
+- name: Dell - renomme la configuration
+  copy:
+    remote_src: yes
+    src: "{{ exportedConfig.scp_status.file }}"
+    dest: "/root/dell_{{ambx_model}}.xml"
+  when: "exportedConfig is not failed"
+  no_log: false
+
+- name: Dell - Enlève l'ancien fichier
+  file:
+    state: absent
+    path: "{{ exportedConfig.scp_status.file }}"
+  when: "exportedConfig is not failed"
+  no_log: false

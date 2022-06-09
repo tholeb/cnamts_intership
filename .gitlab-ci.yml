@@ -1,0 +1,12 @@
+stages:
+  - test
+
+ansible_review:
+  stage: test
+  script:
+    - find . -name "*.yml" -exec ansible-review {} \;
+
+ansible_lint:
+  stage: test
+  script:
+    - find . -name "*.yml" -exec ansible-lint {} \;

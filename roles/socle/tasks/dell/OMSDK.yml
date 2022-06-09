@@ -1,0 +1,52 @@
+---
+- name: OMSDK - Upload les dépendances absente des repo YUM
+  copy:
+    src: "{{ item }}"
+    dest: /tmp
+  with_fileglob: "*.el7.noarch.rpm"
+  register: rpmPackages
+  no_log: true
+
+  # Librairies python necessaire: 
+  # pysnmp>=4.4.1
+  # pyasn1>=0.4.4
+  # enum34>=1.1.6
+  # requests>=2.12.3
+  # PyYAML>=3.12
+  # future>=0.16.0
+  # pysnmp-mibs>=0
+- name: OMSDK - Installe les dépendances (repo yum)
+  yum:
+    name: "{{ packages }}"
+    state: "latest"
+  vars: 
+    packages: 
+      - python2-pyasn1
+      - python-enum34
+      - PyYAML
+  no_log: true
+  
+- name: OMSDK - Installe les dépendances (paquets RPM)
+  yum:
+    name: "{{ item.dest }}"
+    state: "present"
+  loop: "{{ rpmPackages.results }}" # future & pysnmp
+  no_log: true
+  
+- name: Vérifie la version des paquêts pythons sur la machine
+  command: "python2 ~/pkgs_checker.py pysnmp pysnmp-mibs pyasn1 enum34 requests PyYAML future omsdk" 
+  register: pkgs_version
+  no_log: true
+
+- name: OMSDK - Unzip l'archive
+  unarchive:
+    src: omsdk-devel.zip
+    dest: /tmp
+  register: archive
+  no_log: true
+
+- name: OMSDK - Installe omsdk
+  command: "python2 ./setup.py install"
+  args: 
+    chdir: "{{ archive.dest }}/omsdk-devel"
+  no_log: true

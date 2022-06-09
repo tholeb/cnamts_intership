@@ -1,0 +1,11 @@
+config: "{{ NetworkProtocol + NIC }}"
+
+NetworkProtocol:
+  - name: SSH.1.Enable
+    value: Enabled
+  - name: SSH.1.Port
+    value: 22
+
+NIC:
+  - name: IPv4.1.Enable
+    value: Enabled

@@ -1,0 +1,70 @@
+---
+- name: Dell T130 - Active le protocol SSH (:22) et désactive telnet (:23) via cURL
+  uri: 
+    url: "{{ redfish_uri }}/Managers/iDRAC.Embedded.1/NetworkProtocol"
+    user: "{{ iDRAC_username }}"
+    password: "{{ vlt_dell_setup_passwd }}"
+    method: PATCH
+    validate_certs : no
+    body_format: json
+    body: 
+      SSH: 
+        Port: 22
+        ProtocolEnabled: true
+      Telnet: 
+        Port: 23
+        ProtocolEnabled: false
+  register: networkProtocol
+  failed_when: 'networkProtocol.json.error is defined'
+  no_log: true
+
+- name: Dell T130 - Configuration Interfaces IPv4 et IPv6 via cURL
+  uri: 
+    url: "{{ redfish_uri }}/Managers/iDRAC.Embedded.1/EthernetInterfaces/iDRAC.Embedded.1%23NIC.1"
+    user: "{{ iDRAC_username }}"
+    password: "{{ vlt_dell_setup_passwd }}"
+    method: PATCH
+    validate_certs : no
+    body_format: json
+    body:
+      HostName: "idrac-{{ dell_service_tag }}" # Necessaire, sinon HTTP 400 (Bad request)
+      IPv4:
+        Enable: true
+        DHCPEnable: true
+      IPv6:
+        Enable: false
+        AutoConfig: true
+  register: ethernetInterfaces
+  failed_when: 'ethernetInterfaces.json.error is defined'
+  no_log: true
+
+# Le module "idrac_redfish_config" ne fonctionne pas pour les machines de 13ème génération
+# https://github.com/dell/redfish-ansible-module/issues/114
+- name: "Applique la config du {{ ambx_model }}"
+  idrac_redfish_config:
+    category: Manager
+    command: SetManagerAttributes
+    manager_attribute_name: "{{ item.name }}"
+    manager_attribute_value: "{{ item.value }}"
+    baseuri: "{{ iDRAC_ip }}"
+    username: "{{ iDRAC_username }}"
+    password: "{{ vlt_dell_setup_passwd }}"
+  with_items: # dans vars/dell/<model ambox>.yml
+    - "{{ config }}"
+  when: '"false" in true' # skip la tâche
+
+# 503, service unailable à cause de la license "basic" (Express ou Entreprise pour import)
+# https://github.com/dell/dellemc-openmanage-ansible-modules/issues/405
+- name: Dell - Importe la configuration XML
+  idrac_server_config_profile:
+    idrac_ip: "{{ iDRAC_ip }}"
+    idrac_user: "{{ iDRAC_username }}"
+    idrac_password: "{{ vlt_dell_setup_passwd }}"
+    command: "import"
+    share_name: "/tmp"
+    scp_file: "dell_{{ambx_model}}.xml"
+    scp_components: "ALL"
+    job_wait: False
+    shutdown_type: Graceful
+    end_host_power_state: "On"
+  when: '"false" in true' # skip la tâche
